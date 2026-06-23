@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: predictwise
+      POSTGRES_PASSWORD: predictwise
+      POSTGRES_DB: predictwise
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U predictwise"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      FLASK_ENV: production
+      PORT: 5000
+      DB_HOST: db
+      DB_PORT: 5432
+      DATABASE_URL: postgresql+psycopg2://predictwise:predictwise@db:5432/predictwise
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-in-prod}
+      RATE_LIMIT: 200/hour
+      # SENTRY_DSN: set-in-prod
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
