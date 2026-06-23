@@ -19,7 +19,7 @@ export default function Login(){
   const getSafeRedirect = (path) => {
     try {
       const decoded = decodeURIComponent(path)
-      if (decoded.startsWith('/') && !decoded.startsWith('//') && !decoded.includes('..') && !/[:\\]/.test(decoded)) return path
+      if (decoded.startsWith('/') && !decoded.startsWith('//') && !decoded.includes('..') && !decoded.includes(':') && !decoded.includes('\\')) return decoded
     } catch { /* malformed encoding */ }
     return '/'
   }
