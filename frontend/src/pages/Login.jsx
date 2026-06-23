@@ -16,7 +16,7 @@ export default function Login(){
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const rawNext = params.get('next') || '/'
-  const next = /^\/(?!\/)/.test(rawNext) && !rawNext.includes(':') ? rawNext : '/'
+  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') && !rawNext.includes(':') ? rawNext : '/'
   const { setToken: setAuthToken } = useAuth()
   const { notify } = useToast()
 
