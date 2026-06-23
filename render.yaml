@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: predictwise-api
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: sh start.sh
+    healthCheckPath: /health
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: CORS_ALLOWED_ORIGINS
+        value: "*"
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: FLASK_APP
+        value: backend.app:create_app
