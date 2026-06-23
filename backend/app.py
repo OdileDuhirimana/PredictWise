@@ -75,7 +75,7 @@ def create_app():
     sentry_dsn = os.getenv('SENTRY_DSN')
     if sentry_dsn:
         sentry_sdk.init(dsn=sentry_dsn, integrations=[FlaskIntegration()])
-    CORS(app, origins=_parse_origins(os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://localhost:3000')))
+    CORS(app, origins=_parse_origins(os.getenv('CORS_ALLOWED_ORIGINS', '*')))
     JWTManager(app)
     limiter = Limiter(get_remote_address, app=app, default_limits=[os.getenv('RATE_LIMIT', '200/hour')])
     Swagger(app)
