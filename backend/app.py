@@ -1,4 +1,5 @@
 import os
+import secrets
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
@@ -60,8 +61,7 @@ def create_app():
     if not _jwt_secret:
         if _is_prod:
             raise RuntimeError('JWT_SECRET_KEY must be set in production')
-        import secrets as _secrets
-        _jwt_secret = _secrets.token_hex(32)
+        _jwt_secret = secrets.token_hex(32)
     app.config['JWT_SECRET_KEY'] = _jwt_secret
     app.config['SWAGGER'] = {
         'title': 'PredictWise API',
