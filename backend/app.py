@@ -53,7 +53,12 @@ def create_app():
         db_url = _normalize_database_url(db_url)
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret')
+    _jwt_secret = os.getenv('JWT_SECRET_KEY')
+    if not _jwt_secret:
+        if (os.getenv('FLASK_ENV', 'development')).lower() == 'production':
+            raise RuntimeError('JWT_SECRET_KEY must be set in production')
+        _jwt_secret = 'dev-secret'
+    app.config['JWT_SECRET_KEY'] = _jwt_secret
     app.config['SWAGGER'] = {
         'title': 'PredictWise API',
         'uiversion': 3,
@@ -66,7 +71,7 @@ def create_app():
     sentry_dsn = os.getenv('SENTRY_DSN')
     if sentry_dsn:
         sentry_sdk.init(dsn=sentry_dsn, integrations=[FlaskIntegration()])
-    CORS(app, origins=_parse_origins(os.getenv('CORS_ALLOWED_ORIGINS', '*')))
+    CORS(app, origins=_parse_origins(os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://localhost:3000')))
     JWTManager(app)
     limiter = Limiter(get_remote_address, app=app, default_limits=[os.getenv('RATE_LIMIT', '200/hour')])
     Swagger(app)

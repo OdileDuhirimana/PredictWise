@@ -9,13 +9,14 @@ import Spinner from '../components/Spinner.jsx'
 import logo from '../assets/logo.svg'
 
 export default function Login(){
-  const [email,setEmail]=React.useState('admin@predictwise.test')
-  const [password,setPassword]=React.useState('admin123')
+  const [email,setEmail]=React.useState('')
+  const [password,setPassword]=React.useState('')
   const [msg,setMsg]=React.useState('')
   const [busy,setBusy]=React.useState(false)
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const next = params.get('next') || '/'
+  const rawNext = params.get('next') || '/'
+  const next = /^\/[^/]/.test(rawNext) || rawNext === '/' ? rawNext : '/'
   const { setToken: setAuthToken } = useAuth()
   const { notify } = useToast()
 
