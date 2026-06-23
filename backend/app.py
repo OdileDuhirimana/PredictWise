@@ -53,9 +53,10 @@ def create_app():
         db_url = _normalize_database_url(db_url)
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    _is_prod = (os.getenv('FLASK_ENV') or os.getenv('NODE_ENV') or 'development').lower() == 'production'
     _jwt_secret = os.getenv('JWT_SECRET_KEY')
     if not _jwt_secret:
-        if (os.getenv('FLASK_ENV', 'development')).lower() == 'production':
+        if _is_prod:
             raise RuntimeError('JWT_SECRET_KEY must be set in production')
         _jwt_secret = 'dev-secret'
     app.config['JWT_SECRET_KEY'] = _jwt_secret
