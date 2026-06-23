@@ -1,0 +1,18 @@
+{
+  "app": {
+    "welcome": "Murakaza neza",
+    "login": "Injira",
+    "logout": "Sohoka",
+    "dashboard": "Ibanze",
+    "students": "Abanyeshuri",
+    "data_entry": "Inyandikiro",
+    "predict": "Iteganyabumenyi",
+    "wellness": "Ubuzima bw'umutima",
+    "voice": "Ijwi",
+    "digital_twin": "Digital Twin",
+    "leaderboard": "Urutonde",
+    "retraining": "Kwigishwa bushya",
+    "online": "Hifashijwe",
+    "offline": "Hafunze"
+  }
+}

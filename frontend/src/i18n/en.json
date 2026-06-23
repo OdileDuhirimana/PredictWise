@@ -1,0 +1,18 @@
+{
+  "app": {
+    "welcome": "Welcome",
+    "login": "Login",
+    "logout": "Logout",
+    "dashboard": "Dashboard",
+    "students": "Students",
+    "data_entry": "Data Entry",
+    "predict": "Predict",
+    "wellness": "Wellness",
+    "voice": "Voice",
+    "digital_twin": "Digital Twin",
+    "leaderboard": "Leaderboard",
+    "retraining": "Retraining",
+    "online": "Online",
+    "offline": "Offline"
+  }
+}
