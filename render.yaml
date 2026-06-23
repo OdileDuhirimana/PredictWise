@@ -11,7 +11,7 @@ services:
       - key: DATABASE_URL
         value: "sqlite:///predictwise.db"
       - key: CORS_ALLOWED_ORIGINS
-        value: "https://odile-portfolio.vercel.app"
+        sync: false
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: FLASK_APP
