@@ -5,13 +5,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: predictwise
-      POSTGRES_PASSWORD: predictwise
-      POSTGRES_DB: predictwise
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-predictwise}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U predictwise"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -26,10 +26,11 @@ services:
       PORT: 5000
       DB_HOST: db
       DB_PORT: 5432
-      DATABASE_URL: postgresql+psycopg2://predictwise:predictwise@db:5432/predictwise
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-in-prod}
-      RATE_LIMIT: 200/hour
-      # SENTRY_DSN: set-in-prod
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      RATE_LIMIT: ${RATE_LIMIT:-200/hour}
+      # SENTRY_DSN: ${SENTRY_DSN}
     depends_on:
       db:
         condition: service_healthy

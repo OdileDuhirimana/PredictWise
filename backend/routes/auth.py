@@ -30,5 +30,5 @@ def login():
     u = User.query.filter_by(email=email).first()
     if not u or not u.check_password(password):
         return {'error': 'invalid credentials'}, 401
-    token = create_access_token(identity=str(u.id), additional_claims={'role': u.role, 'email': u.email})
+    token = create_access_token(identity=str(u.id), additional_claims={'role': u.role})
     return {'access_token': token}
