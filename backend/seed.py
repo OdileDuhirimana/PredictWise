@@ -25,9 +25,23 @@ LAST_NAMES = [
 def rand_name():
     return f"{random.choice(FIRST_NAMES)} {random.choice(LAST_NAMES)}"
 
+# Real bug this fixes: '.test' is an IANA/RFC 2606 reserved special-use
+# TLD (alongside '.example', '.invalid', '.localhost'). pydantic's
+# EmailStr (via the email-validator package, used by schemas.py's
+# LoginRequest/RegisterRequest) rejects addresses on any of these
+# reserved TLDs as a syntax-level validation failure — meaning every demo
+# account this script created with an '@predictwise.test' address could
+# never actually log in through the real API, only be inserted directly
+# via the ORM. '.rw' is a real ccTLD (Rwanda), fitting this project's own
+# "designed with the Rwandan education system in mind" framing, and
+# passes EmailStr validation.
+DEMO_EMAIL_DOMAIN = 'predictwise.rw'
+
+
 def ensure_admin():
-    if not User.query.filter_by(email='admin@predictwise.test').first():
-        u = User(email='admin@predictwise.test', role='admin')
+    admin_email = f'admin@{DEMO_EMAIL_DOMAIN}'
+    if not User.query.filter_by(email=admin_email).first():
+        u = User(email=admin_email, role='admin')
         u.set_password('admin123')
         db.session.add(u)
 
@@ -35,7 +49,7 @@ def ensure_users(role: str, count: int, email_prefix: str):
     existing = User.query.filter_by(role=role).count()
     to_make = max(0, count - existing)
     for i in range(to_make):
-        email = f"{email_prefix}{existing + i + 1}@predictwise.test"
+        email = f"{email_prefix}{existing + i + 1}@{DEMO_EMAIL_DOMAIN}"
         u = User(email=email, role=role)
         u.set_password('password')
         db.session.add(u)
