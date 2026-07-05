@@ -43,7 +43,36 @@ def _normalize_database_url(raw_url: str) -> str:
 
 def create_app():
     load_dotenv()
-    app = Flask(__name__)
+    # Explicit instance_path, anchored to this file's own directory (one
+    # level up, mirroring the repo layout's existing top-level `instance/`
+    # folder) rather than Flask's default auto-detection from `__name__`.
+    #
+    # Real, reproducible bug this fixes: Flask's default instance-path
+    # resolution depends on *how this module was invoked*, not just where
+    # it lives on disk. `Flask(__name__)` computes it from the string
+    # `__name__` at the call site — normally `'backend.app'` when this
+    # module is imported as part of the `backend` package (gunicorn's
+    # `wsgi:application`, `flask run`/`flask db upgrade`, pytest's
+    # `create_app()` calls, and `python -m backend.seed`, which all import
+    # this module rather than execute it), resolving one level *above* the
+    # `backend/` package directory — i.e. this repo's top-level
+    # `instance/`. But `python -m backend.app` — project.md's own "Local
+    # Setup" step 5, listed as the primary way to run the dev server —
+    # executes this exact file with `__name__` forced to `'__main__'`
+    # instead, which resolves to `backend/instance/` one level down.
+    # Confirmed via a real run: seeding demo data with `python -m
+    # backend.seed` (writes to top-level `instance/predictwise.db`) and
+    # then starting the server with `python -m backend.app` (reads from
+    # `backend/instance/predictwise.db`, silently empty) meant every
+    # seeded demo account — admin/teacher/parent alike — got a clean but
+    # incorrect 401 "Invalid email or password" on login, because the
+    # dev server was never looking at the database that had just been
+    # seeded. Pinning instance_path here makes it identical across every
+    # entry point regardless of how this module happens to be invoked.
+    _instance_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'instance'
+    )
+    app = Flask(__name__, instance_path=_instance_path)
 
     _is_prod = (os.getenv('FLASK_ENV') or os.getenv('NODE_ENV') or 'development').lower() == 'production'
 
@@ -82,7 +111,16 @@ def create_app():
     PrometheusMetrics(app)
 
     db.init_app(app)
-    migrate.init_app(app, db)
+    # Explicit directory (rather than Flask-Migrate's default, cwd-relative
+    # 'migrations'): start.sh and Docker/Render both run `flask db upgrade`
+    # from the repository root, not from backend/, so the cwd-relative
+    # default silently resolved to a nonexistent './migrations' and failed
+    # every time — masked in practice by start.sh's `|| echo "...continuing"`
+    # fallback, meaning migrations were never actually being applied in any
+    # deployed environment despite DB-05 migrations "existing" in the repo.
+    # Anchoring to this file's own directory makes migration discovery
+    # independent of the caller's working directory.
+    migrate.init_app(app, db, directory=os.path.join(os.path.dirname(__file__), 'migrations'))
 
     # Register blueprints
     api_prefix = '/api/v1'
@@ -113,14 +151,6 @@ def create_app():
     return app
 
 
-if __name__ == '__main__':
-    app = create_app()
-    with app.app_context():
-        db.create_all()
-    _setup_signals()
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
-
-
 # Logging configuration
 def _configure_logging():
     logger = logging.getLogger()
@@ -139,3 +169,23 @@ def _setup_signals():
         _shutdown_event.set()
     signal.signal(signal.SIGTERM, _graceful)
     signal.signal(signal.SIGINT, _graceful)
+
+
+# This must be the last thing in the file: `if __name__ == '__main__':`
+# runs immediately as the module executes top-to-bottom, so every name it
+# references (_setup_signals, _configure_logging via create_app()) must
+# already be defined above it. Previously `_configure_logging`/
+# `_setup_signals` were defined *after* this block, meaning `python -m
+# backend.app` — the exact command project.md's own "Local Setup"
+# instructions recommend — raised `NameError: name '_configure_logging'
+# is not defined` immediately on startup. This went undetected because
+# every other entry point (the pytest suite's `create_app()` calls via
+# the factory pattern, `flask run`/`flask db upgrade` via the Flask CLI,
+# and `gunicorn wsgi:application` in start.sh) imports the module without
+# ever executing this `__main__` block, so none of them exercised it.
+if __name__ == '__main__':
+    app = create_app()
+    with app.app_context():
+        db.create_all()
+    _setup_signals()
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
