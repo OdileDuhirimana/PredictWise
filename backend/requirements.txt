@@ -6,6 +6,7 @@ SQLAlchemy==2.0.36
 alembic==1.13.2
 Flask-Migrate==4.0.7
 pydantic==2.9.2
+email-validator==2.2.0
 pandas==2.2.3
 numpy==2.1.2
 scikit-learn==1.5.2
@@ -23,6 +24,7 @@ nltk==3.9.1
 textblob==0.18.0.post0
 vaderSentiment==3.3.2
 pytest==8.3.3
+pytest-cov==6.0.0
 twilio==9.3.6
 gunicorn==23.0.0
 psycopg[binary]==3.2.9
@@ -31,3 +33,8 @@ Flask-Limiter==3.8.0
 sentry-sdk==2.17.0
 prometheus-flask-exporter==0.23.0
 python-json-logger==2.0.7
+
+# Response caching (backend/cache.py): a no-op / falls back to in-memory
+# behavior with zero configuration (REDIS_URL unset) — see .env.example
+# and project.md's "Challenges & Tradeoffs".
+Flask-Caching==2.4.0

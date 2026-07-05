@@ -1,22 +1,24 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
+from pydantic import ValidationError
 from ..ml.engine import predict
+from ..schemas import StudentFeaturesRequest
+from ..utils.errors import error_response
 
 
 dt_bp = Blueprint('digital_twin', __name__)
 
 
 @dt_bp.post('/project')
-@jwt_required(optional=True)
+@jwt_required()
 def project():
-    data = request.get_json() or {}
+    try:
+        payload = StudentFeaturesRequest.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        return error_response('validation_error', 'Invalid projection features', 400, details=exc.errors())
+
     # Create a simple projection curve across next 3 terms by varying attendance/homework slightly
-    base = {
-        'avg_score': float(data.get('avg_score', 60)),
-        'attendance_rate': float(data.get('attendance_rate', 0.9)),
-        'homework_completion': float(data.get('homework_completion', 0.8)),
-        'behavior_incidents': float(data.get('behavior_incidents', 0)),
-    }
+    base = payload.model_dump()
     scenarios = [
         {'label': 'current', **base},
         {'label': 'improved_attendance', **{**base, 'attendance_rate': min(0.99, base['attendance_rate'] + 0.05)}},

@@ -16,6 +16,7 @@ from sqlalchemy import text
 import signal
 import threading
 
+from .cache import cache, cache_config
 from .database import db, migrate
 from .routes.auth import auth_bp
 from .routes.students import students_bp
@@ -26,6 +27,8 @@ from .routes.alerts import alerts_bp
 from .routes.wellness import wellness_bp
 from .routes.voice import voice_bp
 from .routes.digital_twin import dt_bp
+from .utils.errors import error_response
+from .utils.request_id import RequestIdLogFilter, init_request_id
 
 
 def _parse_origins(raw_origins: str):
@@ -39,6 +42,18 @@ def _normalize_database_url(raw_url: str) -> str:
     if raw_url.startswith('postgresql://'):
         return raw_url.replace('postgresql://', 'postgresql+psycopg://', 1)
     return raw_url
+
+
+def _limiter_storage_kwargs(redis_url: str | None) -> dict:
+    """Selects Flask-Limiter's storage backend based on REDIS_URL.
+
+    Extracted as a pure function (rather than inlined in create_app())
+    specifically so this selection can be unit-tested without needing a
+    real or fake Redis connection — Flask-Limiter/`limits` only actually
+    connects lazily on first use, so the interesting, testable behavior is
+    entirely "which kwargs do we pass," not "did the connection succeed."
+    """
+    return {'storage_uri': redis_url} if redis_url else {}
 
 
 def create_app():
@@ -105,10 +120,29 @@ def create_app():
     if sentry_dsn:
         sentry_sdk.init(dsn=sentry_dsn, integrations=[FlaskIntegration()])
     CORS(app, origins=_parse_origins(os.getenv('CORS_ALLOWED_ORIGINS', '*')))
-    JWTManager(app)
-    limiter = Limiter(get_remote_address, app=app, default_limits=[os.getenv('RATE_LIMIT', '200/hour')])
+    init_request_id(app)
+    jwt_manager = JWTManager(app)
+    _register_jwt_error_handlers(jwt_manager)
+
+    # Rate limiting: Redis-backed when REDIS_URL is configured (correct
+    # behavior across multiple gunicorn workers, and limits survive a
+    # process restart); falls back to Flask-Limiter's in-memory store
+    # otherwise, which only tracks limits within a single worker process
+    # and resets on restart — acceptable for local dev/a single-process
+    # demo, explicitly not for a multi-worker production deployment (see
+    # project.md's "Challenges & Tradeoffs"; GUNICORN_WORKERS=2 in
+    # .env.example means an in-memory limiter is already known-incorrect
+    # in this project's own production config without REDIS_URL set).
+    limiter_kwargs = _limiter_storage_kwargs(os.getenv('REDIS_URL'))
+    Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=[os.getenv('RATE_LIMIT', '200/hour')],
+        **limiter_kwargs,
+    )
     Swagger(app)
     PrometheusMetrics(app)
+    cache.init_app(app, config=cache_config(os.getenv('REDIS_URL')))
 
     db.init_app(app)
     # Explicit directory (rather than Flask-Migrate's default, cwd-relative
@@ -148,7 +182,74 @@ def create_app():
         status = 200 if db_ok else 503
         return jsonify({'db': db_ok}), status
 
+    _register_error_handlers(app)
+
     return app
+
+
+def _register_error_handlers(app: Flask):
+    """Ensure every route — including ones not explicitly touched by this
+    pass — returns the same JSON error envelope instead of Flask's default
+    HTML error pages. Without this, a 404 on an unknown API path or an
+    uncaught exception in any view would leak an HTML stack trace/page to
+    API clients, which is both a poor API experience and a minor
+    information-disclosure risk in production.
+    """
+
+    @app.errorhandler(404)
+    def _not_found(err):
+        return error_response('not_found', 'The requested resource was not found.', 404)
+
+    @app.errorhandler(405)
+    def _method_not_allowed(err):
+        return error_response('method_not_allowed', 'This HTTP method is not allowed for this endpoint.', 405)
+
+    @app.errorhandler(500)
+    def _internal_error(err):
+        # Never leak exception internals to the client; Sentry (if
+        # configured via SENTRY_DSN) already captures the real traceback.
+        app.logger.exception('Unhandled exception')
+        return error_response('internal_error', 'An unexpected error occurred.', 500)
+
+
+def _register_jwt_error_handlers(jwt_manager: JWTManager):
+    """Makes Flask-JWT-Extended's own error responses (missing/invalid/
+    expired tokens) use the same error envelope as every other error in
+    the API.
+
+    Why this was a real, previously-undetected gap: `_register_error_handlers`
+    above covers Flask's own 404/405/500 defaults, but Flask-JWT-Extended
+    handles 401s *before* they ever reach Flask's error-handling machinery
+    — it has its own callback registry (`unauthorized_loader` etc.) that,
+    left at its defaults, returns `{"msg": "Missing Authorization Header"}`
+    instead of `{"error": {"code", "message"}}`. Every route in this
+    codebase is protected by `@jwt_required()`, so this was silently the
+    single most common error shape returned by the entire API — found via
+    a contract test (test_error_envelope_contract.py) that specifically
+    checked 401s from several different routes, none of which had been
+    individually asserting the envelope *shape* rather than just the
+    status code in their own test files.
+    """
+
+    @jwt_manager.unauthorized_loader
+    def _missing_token(reason: str):
+        return error_response('unauthorized', 'A valid access token is required.', 401)
+
+    @jwt_manager.invalid_token_loader
+    def _invalid_token(reason: str):
+        return error_response('unauthorized', 'The provided access token is invalid.', 401)
+
+    @jwt_manager.expired_token_loader
+    def _expired_token(jwt_header, jwt_payload):
+        return error_response('unauthorized', 'The access token has expired.', 401)
+
+    @jwt_manager.revoked_token_loader
+    def _revoked_token(jwt_header, jwt_payload):
+        return error_response('unauthorized', 'The access token has been revoked.', 401)
+
+    @jwt_manager.needs_fresh_token_loader
+    def _needs_fresh_token(jwt_header, jwt_payload):
+        return error_response('unauthorized', 'A fresh access token is required for this action.', 401)
 
 
 # Logging configuration
@@ -157,8 +258,16 @@ def _configure_logging():
     logger.setLevel(logging.INFO)
     if not logger.handlers:
         handler = logging.StreamHandler()
-        formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+        # %(request_id)s is populated by RequestIdLogFilter below on every
+        # record emitted during a request (None outside of one, e.g.
+        # startup logs), so any log line — including audit events from
+        # utils/audit.py — can be correlated back to the HTTP request that
+        # produced it via the X-Request-ID response header.
+        formatter = jsonlogger.JsonFormatter(
+            '%(asctime)s %(levelname)s %(name)s %(request_id)s %(message)s'
+        )
         handler.setFormatter(formatter)
+        handler.addFilter(RequestIdLogFilter())
         logger.addHandler(handler)
 
 _shutdown_event = threading.Event()
