@@ -4,6 +4,7 @@ import Card from '../components/Card.jsx'
 import Button from '../components/Button.jsx'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useToast } from '../components/Toast.jsx'
+import { getSafeRedirect } from '../utils/getSafeRedirect.js'
 
 export default function Register(){
   const [email,setEmail]=React.useState('')
@@ -13,7 +14,11 @@ export default function Register(){
   const [msg,setMsg]=React.useState('')
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const next = params.get('next') || '/login'
+  // Was previously used unvalidated — an open-redirect vector inconsistent
+  // with Login.jsx's already-correct getSafeRedirect() check on the same
+  // `next` query param. See utils/getSafeRedirect.js for the shared fix.
+  const rawNext = params.get('next') || '/login'
+  const next = getSafeRedirect(rawNext)
   const { notify } = useToast()
 
   const submit = async (e)=>{

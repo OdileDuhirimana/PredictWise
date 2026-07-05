@@ -7,6 +7,7 @@ import { useAuth } from '../auth/AuthContext.jsx'
 import { useToast } from '../components/Toast.jsx'
 import Spinner from '../components/Spinner.jsx'
 import logo from '../assets/logo.svg'
+import { getSafeRedirect } from '../utils/getSafeRedirect.js'
 
 export default function Login(){
   const [email,setEmail]=React.useState('')
@@ -16,13 +17,6 @@ export default function Login(){
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const rawNext = params.get('next') || '/'
-  const getSafeRedirect = (path) => {
-    try {
-      const decoded = decodeURIComponent(path)
-      if (decoded.startsWith('/') && !decoded.startsWith('//') && !decoded.includes('..') && !decoded.includes(':') && !decoded.includes('\\')) return decoded
-    } catch { /* malformed encoding */ }
-    return '/'
-  }
   const next = getSafeRedirect(rawNext)
   const { setToken: setAuthToken } = useAuth()
   const { notify } = useToast()
