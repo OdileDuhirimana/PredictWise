@@ -26,8 +26,16 @@ class Student(db.Model):
 
 
 class Assessment(db.Model):
+    __table_args__ = (
+        db.CheckConstraint('score >= 0', name='ck_assessment_score_non_negative'),
+        db.CheckConstraint('max_score > 0', name='ck_assessment_max_score_positive'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('student.id'))
+    # index=True: student_id is the join/filter key for every leaderboard,
+    # analytics, and per-student query in the codebase — without an index
+    # every one of those becomes a full table scan as data grows.
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), index=True)
     subject = db.Column(db.String(64), nullable=False)
     score = db.Column(db.Float, nullable=False)
     max_score = db.Column(db.Float, default=100)
@@ -37,22 +45,27 @@ class Assessment(db.Model):
 
 class Attendance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('student.id'))
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), index=True)
     date = db.Column(db.Date, nullable=False)
     present = db.Column(db.Boolean, default=True)
 
 
 class Gamification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('student.id'))
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), index=True)
     xp = db.Column(db.Integer, default=0)
     streak = db.Column(db.Integer, default=0)
     badges = db.Column(db.String(512), default='')  # comma-separated
 
 
 class SurveyResponse(db.Model):
+    __table_args__ = (
+        db.CheckConstraint('mood >= 1 AND mood <= 10', name='ck_survey_response_mood_range'),
+        db.CheckConstraint('stress >= 1 AND stress <= 10', name='ck_survey_response_stress_range'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('student.id'))
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), index=True)
     mood = db.Column(db.Integer, default=5)  # 1-10
     stress = db.Column(db.Integer, default=5)  # 1-10
     sleep_hours = db.Column(db.Float, default=7.0)
