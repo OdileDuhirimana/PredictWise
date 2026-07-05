@@ -1,11 +1,11 @@
 import React from 'react'
-import api from '../api'
+import { checkHealth } from '../api'
 
 export default function Connectivity(){
   const [ok,setOk]=React.useState(true)
   React.useEffect(()=>{
     let alive=true
-    const ping=()=> api.get('/health').then(()=> alive&&setOk(true)).catch(()=> alive&&setOk(false))
+    const ping=()=> checkHealth().then(()=> alive&&setOk(true)).catch(()=> alive&&setOk(false))
     ping()
     const id = setInterval(ping, 5000)
     return ()=>{ alive=false; clearInterval(id) }
