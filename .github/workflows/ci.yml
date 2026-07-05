@@ -1,0 +1,92 @@
+name: CI
+
+# Runs on every push/PR to main: backend tests (with coverage) and a
+# frontend production build. There is deliberately no lint step — the
+# frontend has no ESLint config and no lint script in package.json, and
+# the project instructions call for not inventing one in this pass. If a
+# lint step is wanted later, add `eslint` + a config as a separate change.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend tests (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run backend tests with coverage
+        # Run from the repo root: tests import `backend.xxx`, so this must
+        # not `cd` into backend/ first.
+        run: python -m pytest backend/tests -v --cov=backend
+
+  frontend:
+    name: Frontend build (Node LTS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Accessibility check (Lighthouse CI)
+        # Verified locally against a real headless Chromium before being
+        # added here (see docs/ARCHITECTURE.md / project.md): this exact
+        # config caught two real WCAG AA contrast failures and a missing
+        # <select> label on first run, both since fixed in styles.css /
+        # LangSwitch.jsx. ubuntu-latest ships Chrome pre-installed, which
+        # @lhci/cli uses automatically.
+        working-directory: frontend
+        run: npm run a11y
+
+  deploy:
+    name: Deploy to Render (on main, after tests pass)
+    needs: [backend, frontend]
+    # `needs` alone already blocks this job from running if either test
+    # job fails — this is the actual "CI gates CD" fix. Previously
+    # render.yaml's Render-side auto-deploy triggered independently of
+    # whether backend/frontend even passed here, so "CI exists" and
+    # "CI/CD" (a gated pipeline) were two different, previously-conflated
+    # claims. The `if` below additionally restricts *triggering* a deploy
+    # to actual pushes on main (never a PR from a fork, which must not be
+    # able to trigger a deploy at all) and to only run when a deploy hook
+    # secret has actually been configured, so this workflow doesn't fail
+    # in any fork/clone that hasn't set one up.
+    if: >
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      secrets.RENDER_DEPLOY_HOOK_URL != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy hook
+        # Render's deploy hooks are plain webhook URLs (no payload
+        # required) configured per-service in the Render dashboard and
+        # stored here as a GitHub Actions secret — never in render.yaml or
+        # any committed file. See docs/adr/ for why this project doesn't
+        # attempt to verify a live deployment from within this repository:
+        # that requires infrastructure access (a real Render account and
+        # service) this codebase cannot provision or confirm on its own.
+        run: curl --fail --silent --show-error "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"

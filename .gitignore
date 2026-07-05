@@ -14,3 +14,17 @@ dist/
 build/
 .DS_Store
 *.log
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
+# Generated ML artifacts (backend/ml/engine.py::train_regressor writes
+# here) — regeneratable model binaries/baselines, not source, and not
+# something that should bloat repo history the way source code diffs do.
+backend/ml/artifacts/
+
+# Lighthouse CI output (frontend/.lighthouserc.json) — generated reports,
+# regenerated on every CI run.
+frontend/.lighthouseci/
+frontend/lighthouse-report/

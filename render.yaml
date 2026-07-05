@@ -5,6 +5,13 @@ services:
     buildCommand: pip install -r backend/requirements.txt
     startCommand: sh start.sh
     healthCheckPath: /health
+    # Deploys are triggered explicitly by .github/workflows/ci.yml's
+    # `deploy` job (via a Render deploy hook) only after both backend
+    # tests and the frontend build succeed — not automatically on every
+    # push. Without this, Render's own GitHub integration would deploy
+    # independently of CI results, which is exactly the "CI exists but
+    # doesn't gate deployment" gap a prior audit flagged.
+    autoDeploy: false
     envVars:
       - key: FLASK_ENV
         value: production
@@ -14,3 +21,18 @@ services:
         generateValue: true
       - key: FLASK_APP
         value: backend.app:create_app
+      # REQUIRED as of the CORS fail-closed fix in backend/app.py: unlike
+      # JWT_SECRET_KEY, this cannot be auto-generated (it must be the
+      # frontend's real deployed origin), so `sync: false` marks it as
+      # "set this manually in the Render dashboard" rather than silently
+      # deploying with an empty/missing value that would crash the app at
+      # startup (create_app() raises RuntimeError if unset in production).
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      # Optional: set to a Render Redis instance's connection string to
+      # enable Redis-backed rate limiting and background ML training
+      # (backend/jobs/). Omitted entirely (rather than set to a placeholder)
+      # so its absence is unambiguous — both features cleanly fall back to
+      # their synchronous/in-memory defaults when this key doesn't exist.
+      # - key: REDIS_URL
+      #   sync: false
