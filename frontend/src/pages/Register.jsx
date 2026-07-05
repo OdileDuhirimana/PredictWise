@@ -31,7 +31,7 @@ export default function Register(){
       notify('Registered successfully. Please login.','success')
       navigate(next, { replace: true })
     }catch(err){
-      const errMsg = err?.response?.data?.error || 'Registration failed'
+      const errMsg = err?.response?.data?.error?.message || 'Registration failed'
       setMsg(errMsg)
       notify(errMsg,'error')
     }finally{
