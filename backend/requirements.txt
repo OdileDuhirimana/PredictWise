@@ -34,7 +34,16 @@ sentry-sdk==2.17.0
 prometheus-flask-exporter==0.23.0
 python-json-logger==2.0.7
 
-# Response caching (backend/cache.py): a no-op / falls back to in-memory
-# behavior with zero configuration (REDIS_URL unset) — see .env.example
-# and project.md's "Challenges & Tradeoffs".
+# Background jobs (backend/jobs/), Redis-backed rate limiting
+# (backend/app.py), and response caching (backend/cache.py): all are
+# no-ops / fall back to in-memory behavior with zero configuration
+# (REDIS_URL unset) — see .env.example and project.md's "Challenges &
+# Tradeoffs".
+redis==8.0.1
+rq==2.10.0
 Flask-Caching==2.4.0
+
+# Test-only: lets test_ml_train_background.py exercise the RQ job queue
+# against an in-process fake instead of requiring a real Redis server in
+# CI/dev. Not imported by any non-test code.
+fakeredis==2.36.2
