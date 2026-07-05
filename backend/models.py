@@ -22,7 +22,15 @@ class Student(db.Model):
     name = db.Column(db.String(120), nullable=False)
     grade = db.Column(db.String(16), nullable=False)
     class_name = db.Column(db.String(32), nullable=True)
+    # Nullable by design: a student may be enrolled before any guardian
+    # account exists in the system. NULL is treated as "no parent user may
+    # read this record yet" (fail-secure) rather than "any parent may" —
+    # see the ownership checks in routes/students.py, routes/wellness.py,
+    # and routes/gamification.py::leaderboard.
+    parent_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    parent = db.relationship('User', backref=db.backref('children', lazy='dynamic'))
 
 
 class Assessment(db.Model):

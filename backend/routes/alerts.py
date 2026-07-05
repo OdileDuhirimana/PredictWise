@@ -1,6 +1,11 @@
-from flask import Blueprint, request
+from flask import Blueprint, current_app, request
 from flask_jwt_extended import jwt_required
+from pydantic import ValidationError
 import os
+
+from ..schemas import SendAlertRequest
+from ..utils.auth import roles_required
+from ..utils.errors import error_response
 
 try:
     from twilio.rest import Client  # type: ignore
@@ -13,11 +18,18 @@ alerts_bp = Blueprint('alerts', __name__)
 
 @alerts_bp.post('/send')
 @jwt_required()
+# Blasting SMS/WhatsApp alerts to parents has real-world cost and
+# disruption implications, so only admins may trigger it.
+@roles_required('admin')
 def send_alert():
-    data = request.get_json() or {}
-    channel = (data.get('channel') or 'sms').lower()
-    to = data.get('to')
-    message = data.get('message') or ''
+    try:
+        payload = SendAlertRequest.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        return error_response('validation_error', 'Invalid alert details', 400, details=exc.errors())
+
+    channel = payload.channel
+    to = payload.to
+    message = payload.message
 
     # Twilio credentials via env
     sid = os.getenv('TWILIO_ACCOUNT_SID')
@@ -41,9 +53,23 @@ def send_alert():
                     to=to,
                 )
             return {'status': 'queued', 'sid': msg.sid, 'channel': channel, 'to': to}
-        except Exception as e:
-            # Fallback to mock on error
-            return {'status': 'mocked', 'channel': channel, 'to': to, 'message': message, 'error': str(e)}, 202
+        except Exception as exc:
+            # The raw exception (e.g. a Twilio auth/config error) previously
+            # leaked verbatim to the client via `str(e)` — an
+            # information-disclosure risk on an endpoint that already
+            # requires no more than "some admin's JWT" to reach. The real
+            # detail is logged server-side (and captured by Sentry, if
+            # configured) for debugging; the client gets a generic,
+            # standard-envelope error instead. This is a genuine failure —
+            # unlike the "Twilio not configured at all" branch below, which
+            # is an expected/intentional demo-mode state, not an error — so
+            # it returns 502 rather than a soft 202 "mocked" success.
+            current_app.logger.warning('Twilio alert delivery failed: %s', exc)
+            return error_response(
+                'alert_delivery_failed',
+                'Failed to send the alert through the configured provider.',
+                502,
+            )
 
     # Mock sending if Twilio not configured
     return {'status': 'mocked', 'channel': channel, 'to': to, 'message': message}

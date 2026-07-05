@@ -32,8 +32,12 @@ from .utils.request_id import RequestIdLogFilter, init_request_id
 
 
 def _parse_origins(raw_origins: str):
-    origins = [origin.strip() for origin in raw_origins.split(',') if origin.strip()]
-    return origins or ['*']
+    # No wildcard fallback here: an application handling student
+    # mental-health data must never silently degrade to "allow every
+    # origin" just because the configured value parsed to nothing (e.g. a
+    # stray comma). The caller is responsible for supplying a safe default
+    # before reaching this function; this only removes whitespace/empties.
+    return [origin.strip() for origin in raw_origins.split(',') if origin.strip()]
 
 
 def _normalize_database_url(raw_url: str) -> str:
@@ -119,7 +123,23 @@ def create_app():
     sentry_dsn = os.getenv('SENTRY_DSN')
     if sentry_dsn:
         sentry_sdk.init(dsn=sentry_dsn, integrations=[FlaskIntegration()])
-    CORS(app, origins=_parse_origins(os.getenv('CORS_ALLOWED_ORIGINS', '*')))
+
+    # CORS: fail closed exactly like DATABASE_URL/JWT_SECRET_KEY above. A
+    # prior audit flagged that this fell back to the wildcard '*' when
+    # CORS_ALLOWED_ORIGINS was unset — on an app serving student
+    # mental-health data, an unset env var in production must never
+    # silently become "any origin may read this API with a stolen token."
+    # In development, defaulting to the Vite dev server origin keeps
+    # `npm run dev` working with zero required configuration.
+    _cors_origins_raw = os.getenv('CORS_ALLOWED_ORIGINS')
+    if not _cors_origins_raw:
+        if _is_prod:
+            raise RuntimeError('CORS_ALLOWED_ORIGINS must be set in production')
+        _cors_origins_raw = 'http://localhost:5173'
+    _cors_origins = _parse_origins(_cors_origins_raw)
+    if not _cors_origins:
+        raise RuntimeError('CORS_ALLOWED_ORIGINS resolved to no valid origins')
+    CORS(app, origins=_cors_origins)
     init_request_id(app)
     jwt_manager = JWTManager(app)
     _register_jwt_error_handlers(jwt_manager)

@@ -1,17 +1,32 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
-from ..models import SurveyResponse, Attendance
+from ..models import Student, SurveyResponse, Attendance
+from ..utils.auth import get_current_role_and_user_id
+from ..utils.errors import error_response
 from statistics import mean
 
 wellness_bp = Blueprint('wellness', __name__)
 
 
 @wellness_bp.get('/indicator')
-@jwt_required(optional=True)
+@jwt_required()
 def indicator():
     student_id = request.args.get('student_id', type=int)
     if not student_id:
-        return {'error': 'student_id required'}, 400
+        return error_response('validation_error', 'student_id query parameter is required', 400)
+
+    # Ownership scoping: a parent may only view their own child's wellness
+    # indicator (mood/stress/sleep survey data is exactly the kind of
+    # sensitive information the audit's privacy finding was about). A
+    # nonexistent student and a real-but-not-owned student both return the
+    # same 404 rather than 403, so a parent probing student IDs cannot use
+    # the response to learn which IDs exist in the system.
+    role, user_id = get_current_role_and_user_id()
+    if role == 'parent':
+        student = Student.query.get(student_id)
+        if not student or student.parent_id != (int(user_id) if user_id is not None else -1):
+            return error_response('not_found', f'No student with id {student_id}', 404)
+
     surveys = SurveyResponse.query.filter_by(student_id=student_id).order_by(SurveyResponse.created_at.desc()).limit(5).all()
     if not surveys:
         return {'risk': 'unknown', 'score': None}

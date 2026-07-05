@@ -57,12 +57,23 @@ def ensure_users(role: str, count: int, email_prefix: str):
 def seed_students(target: int):
     current = Student.query.count()
     to_make = max(0, target - current)
+    # Round-robin unlinked students across existing parent accounts so the
+    # parent-ownership feature (routes/students.py::list_students,
+    # routes/wellness.py, routes/gamification.py::leaderboard) has
+    # something real to demonstrate rather than every seeded student
+    # having parent_id=NULL. Not every student gets a parent linked
+    # (real schools have more students than guardian accounts in the
+    # system at any given time), matching the nullable, fail-secure
+    # design in models.py::Student.parent_id.
+    parent_ids = [u.id for u in User.query.filter_by(role='parent').all()]
     students = []
-    for _ in range(to_make):
+    for i in range(to_make):
+        parent_id = parent_ids[i % len(parent_ids)] if parent_ids and i % 3 == 0 else None
         s = Student(
             name=rand_name(),
             grade=random.choice(GRADES),
-            class_name=random.choice(CLASSES)
+            class_name=random.choice(CLASSES),
+            parent_id=parent_id,
         )
         students.append(s)
     if students:

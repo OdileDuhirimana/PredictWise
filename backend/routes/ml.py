@@ -7,6 +7,7 @@ from ..ml.engine import predict, is_trained, compute_psi, explain_shap, train_re
 from ..schemas import StudentFeaturesRequest
 from ..services.ml_feature_service import build_feature_dataframe
 from ..services.risk_service import classify_risk
+from ..utils.auth import roles_required
 from ..utils.errors import error_response
 from ..utils.recommend import recommend_study_plan
 
@@ -31,6 +32,9 @@ def _fetch_feature_dataframe():
 
 @ml_bp.post('/train')
 @jwt_required()
+# Retraining the shared model affects predictions for the whole school, so
+# it's restricted to admins rather than any teacher/parent.
+@roles_required('admin')
 def train():
     df = _fetch_feature_dataframe()
     if df is None:
